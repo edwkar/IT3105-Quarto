@@ -9,12 +9,18 @@
 #include <stdexcept>
 #include <vector>
 
+
 using namespace std;
+
+
+
 
 struct quarto_state;
 typedef vector<quarto_state> vqs;
 
-const int A_LOT = 1111LL;
+
+
+const int A_LOT = 1 << 29;
 const int ROW_COL[16][2] = {
   { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 }, 
   { 1, 0 }, { 1, 1 }, { 1, 2 }, { 1, 3 }, 
@@ -38,16 +44,21 @@ const int QUARTO_POSITIONS[10][4][2] = {
 const int NO_PIECE_TO_PLACE = -1;
 
 
-struct quarto_state {
-  typedef bitset<16*4>::reference ref;
 
+
+/* Quarto state representation, with methods for successors generation and
+ * state evaluation.
+ */
+struct quarto_state {
   bitset<16*4> data;
   bitset<16> taken;
   int _currentPiece;
   vqs _successors;
   bool hasSuccessorCached;
 
+
   quarto_state() : _currentPiece(NO_PIECE_TO_PLACE), hasSuccessorCached(false) {}
+
 
   quarto_state(const quarto_state& xs) :
     data(xs.data),
@@ -55,6 +66,7 @@ struct quarto_state {
     _currentPiece(xs._currentPiece),
     _successors(xs._successors),
     hasSuccessorCached(xs.hasSuccessorCached) {}
+
 
   vqs successors() {
     if (!hasSuccessorCached) {
@@ -64,12 +76,13 @@ struct quarto_state {
     return _successors;
   }
 
+
   vqs computeSuccessors() const;
-
   void setCurrentPiece(int x) { _currentPiece = x; }
-
   vector<int> availablePieces() const;
 
+
+  typedef bitset<16*4>::reference ref;
   bool sizeAt (int row, int col) const { return data[row*4*4+col*4+0]; }
   ref  sizeAt (int row, int col)       { return data[row*4*4+col*4+0]; }
   bool shapeAt(int row, int col) const { return data[row*4*4+col*4+1]; }
@@ -81,12 +94,12 @@ struct quarto_state {
   bool takenAt(int row, int col) const { return taken[row*4+col];      }
   bitset<16>::reference  takenAt(int row, int col) { return taken[row*4+col]; }
 
+
   int at(int row, int col) const { 
-    return (sizeAt(row, col)  << 0) | 
-           (shapeAt(row, col) << 1) |
-           (colorAt(row, col) << 2) | 
-           (holeAt(row, col)  << 3);
+    return (sizeAt(row, col)  << 0) | (shapeAt(row, col) << 1) |
+           (colorAt(row, col) << 2) | (holeAt(row, col)  << 3);
   }
+
 
   void insertAt(int row, int col, int newPiece) { 
     sizeAt(row, col)  = (newPiece&1) ? 1 : 0;
@@ -95,6 +108,7 @@ struct quarto_state {
     holeAt(row, col)  = (newPiece&8) ? 1 : 0;
     takenAt(row, col) = true;
   }
+
 
   bool isTerminal() const {
     if (score() == 10)
@@ -105,9 +119,11 @@ struct quarto_state {
     return true;
   }
 
+
   int score() const;
   int scoreAfterPlacement() const;
 };
+
 
 vector<int> quarto_state::availablePieces() const {
   vector<bool> notAvail(16, false);
@@ -121,6 +137,7 @@ vector<int> quarto_state::availablePieces() const {
       res.push_back(x);
   return res;
 }
+
 
 vqs quarto_state::computeSuccessors() const {
   vector<int> avail = availablePieces();
@@ -155,6 +172,7 @@ vqs quarto_state::computeSuccessors() const {
 
   return res;
 }
+
 
 int quarto_state::score() const {
   for (int seqi = 0; seqi < 10; ++seqi) {
@@ -218,6 +236,7 @@ int quarto_state::score() const {
   return 0;
 }
 
+
 int quarto_state::scoreAfterPlacement() const {
   for (int seqi = 0; seqi < 10; ++seqi) {
     int positives = (1<<4)-1, 
@@ -243,23 +262,25 @@ int quarto_state::scoreAfterPlacement() const {
 
 
 
+/* Agent logic.
+ */
 
-struct choice {
+struct agent_move {
   int row, col, currentPiece;
-  choice() {}
-  choice(int row, int col, int currentPiece) :
+  agent_move() {}
+  agent_move(int row, int col, int currentPiece) :
     row(row), col(col), currentPiece(currentPiece) {}
 };
-choice difference(const quarto_state& a, const quarto_state& b) {
+agent_move difference(const quarto_state& a, const quarto_state& b) {
   for (int row = 0; row < 4; ++row) for (int col = 0; col < 4; ++col)
     if ( b.takenAt(row, col) && !a.takenAt(row, col) ) 
-      return choice(row, col, b._currentPiece);
+      return agent_move(row, col, b._currentPiece);
   throw logic_error("should never happen");
 }
 
 
 int minMaxDepth;
-quarto_state bestSucc;
+quarto_state minimaxBestSucc;
 
 int abMinValue(quarto_state node, int depth, 
               int alpha, int beta);
@@ -278,7 +299,7 @@ int abMaxValue(quarto_state node, int depth,
     if (score > v) {
       v = score;
       if (depth == 0) 
-        bestSucc = *it;
+        minimaxBestSucc = *it;
     }
     if (v >= beta)
       return v;
@@ -307,28 +328,36 @@ int abMinValue(quarto_state node, int depth,
 
 
 
-choice nextNaive(quarto_state& s);
-choice nextRandom(quarto_state& s);
+agent_move nextNovice(quarto_state& s);
+agent_move nextRandom(quarto_state& s);
 
-choice nextMinMax(quarto_state& s) {
+/* Minimax agent. Plays the novice strategy when there are more than 10 pieces
+ * left on the board, otherwise plays a best strategy available at search depth
+ * [minMaxDepth].
+ */
+agent_move nextMinimax(quarto_state& s) {
   auto ap = s.availablePieces();
-  if (ap.size() >= 11)
-    return nextNaive(s);
+  if (ap.size() > 10)
+    return nextNovice(s);
 
   if (s.isTerminal()) {
     auto succs = s.successors();
     for (auto it = succs.begin(); it != succs.end(); ++it) 
       if (it->scoreAfterPlacement() == 10) {
-        bestSucc = *it;
+        minimaxBestSucc = *it;
         break;
       }
   } else 
     abMaxValue(s, 0, -1000, +1000);
   
-  return difference(s, bestSucc);
+  return difference(s, minimaxBestSucc);
 }
 
-choice nextNaive(quarto_state& s) {
+
+/* Novice agent. Choose a winning move, if there exists one, otherwise
+ * seemingly worst move with respect to opponent.
+ */
+agent_move nextNovice(quarto_state& s) {
   auto succs = s.successors();
   if (s.score() == 10) 
     for (auto it = succs.begin(); it != succs.end(); ++it) 
@@ -342,15 +371,20 @@ choice nextNaive(quarto_state& s) {
   return difference(s, succs.at(0));
 }
 
-choice nextRandom(quarto_state& s) {
+/* Random agent. Chooses a random move among all successors.
+ */
+agent_move nextRandom(quarto_state& s) {
   auto ap = s.availablePieces();
   auto succs = s.successors();
   random_shuffle(succs.begin(), succs.end());
   return difference(s, succs.at(0));
 }
 
+
 int I(){ 
   int n; 
+  // A bit hackish. Since the game runner does not signal when we're done, we
+  // just exit on the first EOF-producing scanf...
   if ((scanf("%d", &n)) == EOF) 
     exit(0);
   return n; 
@@ -368,20 +402,21 @@ quarto_state readCurrentState() {
   return s;
 }
 
+
 int main(int argc, char *argv[]) {
   srand(42); 
 
   string strategy(argv[1]);
-  if (argc == 3 && strategy == "-minmax") 
+  if (argc == 3 && strategy == "-minimax") 
     minMaxDepth = atoi(argv[2]);
   else if (argc == 2) {
-    if (strategy != "-naive" && strategy != "-random") {
+    if (strategy != "-novice" && strategy != "-random") {
       cout << "Unknown strategy!\n";
       exit(-1);
     }
     minMaxDepth = -1;
   } else {
-    printf("Usage: %s (-minmax [depth]|-naive|-random)\n", argv[0]);
+    printf("Usage: %s (-minimax [depth]|-novice|-random)\n", argv[0]);
     exit(-1);
   }
 
@@ -391,11 +426,11 @@ int main(int argc, char *argv[]) {
     bool isFirstRoundState = 
             s._currentPiece == NO_PIECE_TO_PLACE && ap.size() == 16;
 
-    choice firstRoundChoice(-1, -1, 0);
-    choice c = isFirstRoundState     ? firstRoundChoice :
-               strategy == "-minmax" ? nextMinMax(s) :
-               strategy == "-naive"  ? nextNaive(s)  :
-                                       nextRandom(s);
+    agent_move firstRoundChoice(-1, -1, 0);
+    agent_move c = isFirstRoundState     ? firstRoundChoice :
+                   strategy == "-minimax" ? nextMinimax(s) :
+                   strategy == "-novice"  ? nextNovice(s)  :
+                                            nextRandom(s);
     printf("%d %d %d\n", c.row, c.col, c.currentPiece);
     fflush(stdout);
   }

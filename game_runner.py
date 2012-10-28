@@ -3,7 +3,7 @@
 
 AGENT_INVOCATION_COMMANDS = (
   './quarto_agent -random',
-  './quarto_agent -naive',
+  './quarto_agent -novice',
   './quarto_agent -minmax 1',
   './quarto_agent -minmax 2',
   './quarto_agent -minmax 3',
