@@ -1,0 +1,436 @@
+\documentclass[a4paper,9pt]{article}
+
+\usepackage{a4}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[ascii]{inputenc}
+\usepackage{framed}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xspace}
+
+\usepackage[final]{listings}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{courier}
+\lstset{
+  basicstyle=\footnotesize\ttfamily, 
+  numbers=left,              
+  numberstyle=\tiny,          
+  stepnumber=1,              
+  numbersep=5pt,              
+  tabsize=2,                  
+  extendedchars=true,         
+  breaklines=true,            
+  keywordstyle=\color{red},
+  frame=b,         
+  % keywordstyle=[1]\textbf,   
+  % keywordstyle=[2]\textbf,   
+  % keywordstyle=[3]\textbf,   
+  % keywordstyle=[4]\textbf,   
+  stringstyle=\color{white}\ttfamily, 
+  showspaces=false,           
+  showtabs=false,            
+  xleftmargin=17pt,
+  framexleftmargin=17pt,
+  framexrightmargin=1pt,
+  framexbottommargin=4pt,
+  %backgroundcolor=\color{lightgray},
+  showstringspaces=false    
+}
+\lstloadlanguages{C++}
+
+\usepackage{caption}
+  \DeclareCaptionFont{white}{\color{white}}
+  \DeclareCaptionFormat{default}
+    {\colorbox[cmyk]{0.43, 0.35, 0.35,0.01}
+    {\parbox{0.987\textwidth}{\hspace{15pt}#1#2#3}}}
+  \DeclareCaptionFormat{defaultthin}
+    {\colorbox[cmyk]{0.43, 0.35, 0.35,0.01}
+    {\parbox{0.45\textwidth}{\hspace{15pt}#1#2#3}}}
+  \captionsetup[lstlisting]{format=default,labelfont=white,
+    textfont=white,singlelinecheck=false, margin=0pt, font={bf,footnotesize}}
+  \captionsetup[figure]{format=default,labelfont=white,
+    textfont=white,singlelinecheck=false, margin=0pt, font={bf,footnotesize}}
+
+\author{
+  Edvard K. Karlsen\\
+  \and
+  Torvald Lekvam
+}
+\title{IT3105 Project 2: Quarto minimax agent}
+\date {}
+
+\begin{document}
+
+\maketitle
+
+\section{Evaluation function}
+The main challenge in designing an evaluation function for Quarto is that the
+two players share all pieces among them. Whereas, in `traditional' two-player
+board games, we may speak of corresponding strong and weak positions, the
+meaning of these notions is more subtle in Quarto. A position that appears
+strong when A is to move, seems to often become an even stronger position for B
+in the subsequent move.  However, there are fruitful ideas also for
+`shared-floor' games such as Quarto.
+
+That your opponent chooses what piece you must play, is Quarto's second twist.
+It appears that a powerful evaluation function should spend time considering
+the power of this \emph{current piece}. Of course, whether or not it may be
+placed on the board to make an winning move must be checked, but, let's say
+there are no immediate win in sight, how can we then evaluate its power?  After
+some pondering, we came up with a concept of \emph{usefulness}\footnote{This
+might be a stupid name, since there clearly are situations where our `useful'
+piece is not useful, and vice versa, but it stuck.} for pieces. Intuitively, we
+say that the current piece is useful iff it can take part in a possible quarto.
+That is, there must be some partial sequence on the board, that may possibly be
+combined with the current piece and possible some other unused pieces to form a
+quarto at a later step of the game.
+
+Now, we reason as follows: Every piece that is not useful, must be placed by
+one of the players at some point (unless of course a win happens before that).
+Further, placing a piece that is not useful on the board can only decrease the
+number of `potential quartos' or leave it unchanged. Hence, our intuition
+suggests that forcing the opponent to play the non-useful pieces may `starve'
+her of some possibilities to set up a new complex blow -- such as, say,
+something reminiscent of a fork in chess -- since these moves appear to often
+require longer `future quarto candidates'. Correspondingly, playing useful
+positions seems to be favourable.
+
+This heuristic appears to be perform very good on 3-ply Quarto, since we can
+often force the opponent into a non-useful position on the leaf
+\textsc{min}-ply. Without the ability to make a `useful move' when reaching
+that ply, we hypothesise that 3-ply opponents agents might have problems
+reasoning ahead to a winning step strategy. However, some 4-ply agents seems to
+be able to look ahead and reason past our trick, finding clever ways to force
+wins and ties that move through intuitively weak-looking non-useful positions. 
+
+We do not consider the strategy to be too specialised, since it performs very
+well as a start strategy for agents that are allowed to search the whole state
+space after some moves have been placed: Using three plies with this strategy
+for the first $\sim$five moves, and after that searching exhaustively, our
+agent plays very strongly, while generally computing for about a second per
+move on a modern computer. 
+
+Still, we believe there would be much to gain by applying more study to the
+game. For instance, it would be interesting to examine the properties of
+first-moves in long forced-win sequences. 
+
+\begin{figure}[h!]
+\caption{State evaluation function}
+\vspace{-19pt}
+\label{fig:evalfn}
+\begin{framed}
+\vspace{-10pt}
+{ 
+\begin{align*}
+  P =&~\{ \textsc{max}, \textsc{min} \} \\
+  s \in \textsc{S} :=&~[\text{All possible game states}] \\
+  \\
+  p \in \mathcal{P} :=&~\{ { \small \emph{large}, \emph{small}, \ldots \} } \\
+  S \in \mathcal{S} :=&~\{ 
+    { \footnotesize [(0, 0), (0, 1), (0, 2), (0, 3)], \ldots } \} \\
+  \\
+  \textsf{eval}~:&~\textsc{S} \rightarrow P \rightarrow \mathbb{Z} \\
+  \textsf{eval}(s, \textsc{max}) =& +\textsf{score}(s) \\
+  \textsf{eval}(s, \textsc{min}) =& -\textsf{score}(s) \\
+  \\
+  \textsf{score}~:&~\textsc{S} \rightarrow \mathbb{Z} \\
+  \textsf{score}(s) =& \left\{ 
+    \begin{array}{rl}
+      10 &\mbox{ if $\textsf{can-win}(s)$ } \\
+       5 &\mbox{ if $\textsf{is-useful}(s)$ }\\
+       0 &\mbox{ otherwise} \\
+    \end{array} \right. \\
+  \\
+  \textsf{can-win}~:&~\textsc{S} \rightarrow \textsf{bool} \\
+  \textsf{can-win}(s) =&~
+    \exists p \in \mathcal{P},
+    \exists S \in \mathcal{S},~
+    \exists S' \subset S~ \\
+      & |S'| = 3, \\
+      & \forall q \in s[S']~\textsf{piece-has-prop}(q,~p),\\
+      & \textsf{piece-has-prop}(s.\textsf{cur-piece},~p) \\
+  \\
+  \textsf{is-useful}~:&~\textsc{S} \rightarrow \textsf{bool} \\
+  \textsf{is-useful}(s) =&~
+    \exists p \in \mathcal{P},
+    \exists S \in \mathcal{S},~
+    \exists S' \subset S~ \\
+      & \forall q \in s[S']~\textsf{piece-has-prop}(q,~p),\\
+      & |S'| + |\{ q~|~q \in \textsf{avail-pieces}(s), 
+                             \textsf{piece-has-prop}(q, p) \}| = 4, \\
+      & \textsf{piece-has-prop}(s.\textsf{cur-piece},~p)
+\end{align*}
+}
+
+{ \footnotesize
+$s[S']$ denotes the pieces at all non-empty positions of sequence $S'$ in state
+$s$.  The functions $\textsf{avail-pieces}$ give \emph{all} non-placed pieces
+for a state (that is, including the possible piece-to-place).
+$\textsf{can-win}$ means whether there is a winning current-piece move in the
+state being evaluated.  $\textsf{piece-has-prop}$ was sadly not given the
+honor of a spelled-out definition\ldots
+}
+\end{framed}
+\end{figure}
+
+A mathematical definition of the evaluation function is given in
+Figure~\ref{fig:evalfn}\footnote{We chose to include this definition to
+(hopefully) clarify the same things as drawings would do.}. Here, $\textsc{S}$
+denotes
+the set of all Quarto states. These may be taken as pairs consisting of i) a
+board configuration and ii) possibly a current piece (unless it is the very
+first move of the game).  $\mathcal{P}$ denotes the set of eight properties of
+Quarto pieces. We may take this as symbols \emph{small}, \emph{large},
+\emph{with-hole}, and so on. Note that this definition does not consider the
+`binaryness' of the properties; these are, however, crucial in the actual
+implementation of the evaluation function, which is described in
+Section~\ref{sec:implementation}.  Further, $\mathcal{S}$ is the set of the ten
+possible Quarto `position sequences', given as $(\emph{row},
+\emph{column})$-pairs. 
+
+
+\subsection{Implementation}
+\label{sec:implementation}
+
+In this section we quickly discuss some implementation details of the
+evaluation function (while the actual ideas behind the evaluation is most
+important, we believe it's worthwhile to look quickly on the subtleties of the
+code as well).  
+
+The C++ source code for the implementation of the evaluation function is given
+in Listing~\ref{lst:score}. Lines 2 to 13 correspond to the \textsf{can-win}
+function, while the lines 15 to 40 correspond to \textsf{is-useful}.  The array
+\texttt{seq} holds the various Quarto sequence positions (corresponding to
+$\textsc{S}$). 
+
+One essential insight for reaching a low constant-factor in a Quarto evaluator
+is that one may represent Quarto pieces as integers $0$ to $15$ and then
+evaluate possible Quartos by using bitwise operations: \textsc{and} for the
+`positive' properties, and \textsc{and} with bitwise inverse or \textsc{or}
+beginning with $0$ for the `negative' properties. This method is seen in, for
+instance, line 9 and lines 10-11.
+
+\begin{lstlisting}[label=lst:score,caption=Scoring procedure]
+ll score() const {
+  for (int seqi = 0; seqi < 10; ++seqi) {
+    int numEmpty = 0, positives = _mustPlace, negatives = _mustPlace;
+    for (int i = 0; i < 4; ++i) {
+      int row = seqs[seqi][i][0], col = seqs[seqi][i][1];
+      if (!takenAt(row, col)) {
+        if (++numEmpty > 1) goto NEXT;
+      } else 
+        positives &= at(row, col), negatives |= at(row, col); }
+    if (numEmpty == 1 && (positives != 0 || (negatives&1) == 0 
+    || (negatives&2) == 0 || (negatives&4) == 0 || (negatives&8) == 0))
+        return 10;
+    NEXT: ; }
+
+  auto ap = availablePieces();
+  for (int seqi = 0; seqi < 10; ++seqi) {
+    int numEmpty = 0, positives = (1<<4)-1, negatives = 0;
+    for (int i = 0; i < 4; ++i) {
+      int row = seqs[seqi][i][0], col = seqs[seqi][i][1];
+      if (!takenAt(row, col) 
+        ++numEmpty;
+      else 
+        positives &= at(row, col), negatives |= at(row, col); }
+    if (numEmpty >= 1 && numEmpty < 4) 
+      for (int prop = 0; prop < 4; ++prop) {
+        if ((positives&(1<<prop))) {
+          int n = 0;
+          for (auto it = ap.begin(); it != ap.end(); ++it) 
+            if ((1<<prop)&(*it))
+              n++;
+          if (numEmpty == n && ((1<<prop)&_mustPlace)) {
+            return 5; } }
+
+        if ((negatives&(1<<prop)) == 0) {
+          int n = 0;
+          for (auto it = ap.begin(); it != ap.end(); ++it) 
+            if (((1<<prop)&(*it)) == 0)
+              n++;
+          if (numEmpty == n && ((1<<prop)&_mustPlace)==0) {
+            return 5; //numGoodLines++; } } } }
+  return 0; }
+\end{lstlisting}
+
+\subsection{Formal evaluation}
+Designing heuristic functions and evaluation functions often seems like a
+rather daunting task. It is hard to say whether ones agent plays good `in
+general', or whether it, for instance, just chooses very strongly in a minority
+of the game space. In theory, one could assess the quality of a evaluation function
+by examining its advice in the game space with respect to the choices of a perfect
+agent. To do such a test within reasonable time, one would need to understand
+all the symmetry of the game \footnote{Quarto has a lot
+of symmetry! See for instance
+\url{http://www.cs.rhul.ac.uk/~wouter/Talks/quarto.pdf}, or
+\url{http://web.archive.org/web/20091027181316/http://br.geocities.com/java_quarto/}.},
+which brings the state space down to a manageable size for exhaustive
+computation.
+
+\section{Result tables}
+
+\vspace{10pt}
+\subsection{Novice versus random agent, 100 runs}
+{ \Large
+\begin{tabular}{r|l}
+  \textbf{novice} \textsf{wins} & 97 \textsf{rounds} \\
+  \hline
+  \textbf{random} \textsf{wins} & 1 \textsf{rounds} \\
+  \hline
+  \textsf{game tied}            & 2 \textsf{rounds} \\
+\end{tabular}
+}
+
+\vspace{10pt}
+\subsection{Novice versus minimax-3 agent, 20 runs}
+{ \Large
+\begin{tabular}{r|l}
+  \textbf{novice} \textsf{wins} & 2 \textsf{rounds} \\
+  \hline
+  \textbf{minimax-3} \textsf{wins} & 11 \textsf{rounds} \\
+  \hline
+  \textsf{game tied}            & 7 \textsf{rounds} \\
+\end{tabular}
+}
+
+\vspace{10pt}
+\subsection{minimax-3 agent versus minimax-4 agent, 20 runs}
+\label{sec:3vs4}
+{ \Large
+\begin{tabular}{r|l}
+  \textbf{minimax-3} \textsf{wins} & 10 \textsf{rounds} \\
+  \hline
+  \textbf{minimax-4} \textsf{wins} & 10 \textsf{rounds} \\
+  \hline
+  \textsf{game tied}            & 0 \textsf{rounds} \\
+\end{tabular}
+}
+\\
+
+\noindent
+These results seem very strange! Surely, the four-ply agent ought to play
+better than the three-ply agent? We believe the problem here is an artefact of
+using a fully deterministic strategy, and that, in the specific game that
+unfolds (which repeats itself), the players make the same choices, and grab the
+same winning strategy -- until then invisible to the opponent -- when it
+appears.
+
+If we, however, introduce an element of chance, by introducing some randomness
+in the first five moves, we find the following, more reasonable, results:
+\\
+
+{ 
+\noindent
+{\small \textbf{minimax-3 agent versus minimax-4 agent, with some
+randomness in the beginning, 20 runs} }
+\\
+
+\begin{tabular}{r|l}
+  \textbf{minimax-3} \textsf{wins} & 4 \textsf{rounds} \\
+  \hline
+  \textbf{minimax-4} \textsf{wins} & 9 \textsf{rounds} \\
+  \hline
+  \textsf{game tied}            & 7 \textsf{rounds} \\
+\end{tabular}
+}
+
+\clearpage
+
+
+\vspace{10pt}
+\subsection{minimax-3 agent's tournament results, 500 rounds}
+We ran a three-ply round robin tournament between ourselves and two other
+groups.  \textsf{badeball} is Jonas Amundsen's bot, \textsf{hartel} is Jean
+Niklas L'orange's, and \textsf{evegard-quarto} is Vegard Edvardsen's bot.
+Here, in each grid we show \emph{wins}/\emph{losses}/\emph{ties} with regard to
+the row-player, versus the column-player. Because \textsf{badeball} also
+suffered from the same element of determinism discussed in
+Section~\ref{sec:3vs4}, we ran both \textsf{minimax3-agent} and
+\textsf{evegard-quarto} with added code for random choices in the beginning, in
+the matches between these. (At first, they played the same game 500 times.)
+\\
+
+{ 
+\begin{tabular}{r|c|c|c|c}
+  \textsc{a/b} & \textsf{minimax3-agent} & 
+                 \textsf{badeball} & \textsf{hartel} 
+               & \textsf{evegard-quarto} \\
+  \hline
+  \textsf{minimax-3-agent}  &  & $160/89/251$ & $291/55/154$ & $84/112/304$ \\
+  \hline
+  \textsf{badeball}  & $89/160/251$ & & $16/401/83$ & $93/197/210$ \\
+  \hline
+  \textsf{hartel}  & $55/291/154$ & $401/16/83$ & & $157/91/252$ \\
+  \hline
+  \textsf{evegard-quarto}  & $112/84/304$ & $197/93/210$ & $91/157/252$ & \\
+\end{tabular}
+}
+\\
+
+
+As is clear, there is no clear total ordering of the agents: Our bot plays
+consistently stronger than \textsf{harkel}. \textsf{harkel}, plays somewhat
+stronger than \textsf{evegard-quarto}. But, our bot plays weaker than
+\textsf{evegard-quarto} again.  
+%\textsf{badeball} is clearly not the strongest agent
+%in the tournament. We suspect that its 1500 loosing matches can be explained by
+%some snarly bug yet unknown to its creator\ldots
+
+We note finally that after adding the element of randomness discussed in
+Section~\ref{sec:3vs4}, \textsf{minimax-3-agent} seems to grow stronger than
+\textsf{hartel} (14 wins, 9 losses, and 27 ties in a 50-round match), while
+growing weaker in comparison to \textsf{hartel} (4 wins, 6 losses, and 10 ties
+in a 20-round match). It would be interesting to delve deeper into the reasons
+for these puzzling effects, perhaps by studying examples of games that each
+agent wins or loses.
+
+\section{Reflections on the project}
+Working with this project was challenging, but very fun.  We first
+thought that the project would be `fairly easy' -- we implemented
+an efficient representation for states, a successor generator function, a basic
+evaluation function (can we make a winning move?), and the basic alpha-beta
+pruning algorithm in a few hours. However, the devil is in the details.
+
+First, reasoning about the minimax algorithm, and generally reasoning about
+strategy in zero-sum games, is very subtle in itself. Also, the alpha-beta
+algorithm adds to the complexity. Further, when one cannot search to the bottom
+of the game tree, but has to make informed guesses about partial states, more
+complexity is added. The effect is that there are many axes on which one can
+reason wrongly, and it we often found that we were searching for problems in
+one place, when they actually were caused by something else (for instance,
+thinking that the alpha-beta implementation was wrong, when we really had made
+an error in the scoring function). Also, in comparison with traditional
+algorithmic programming, where an error often is immediately observable, some
+AI programs seem to work quite well when they are `buggy' (in fact,
+investigating the bugs might lead to new solutions). In this case, we sometimes,
+and especially in the start of the development, saw worse performance when we
+fixed errors in the code.
+
+The primary lesson learned is (of course) to apply more good software
+development practice, and try to better isolate and assess solution correctness
+on the various problem axes. 
+
+We were too brave initially and basically `hacked together the solution',
+before debugging it into a working state. Instead we should have focused on
+growing and testing the individual components in isolation. For instance, the
+correctness of the alpha-beta code could be assessed using a far simpler game
+such as tic-tac-toe, and the state evaluation functions could be tested with
+traditional unit testing techniques.  Also, a means to catch more logic error
+in the agent programs would be to have them `call in' their current `promises'
+about the games to the game runner code: in specifics, each agent could call in
+guarantees such as `I will have won in or before my $k$th next move', `if he
+plays optimally, I will lose to my opponent in his $k$th next move', or `I
+guarantee that none of us can make a winning move in the next $k$ moves'. Then,
+the game runner code could abort the match every time a promise was violated. 
+
+Participating in the tournament was fun. We were puzzled by how subtleties in
+the evaluation functions could lead to the consistent `lack of a total
+ordering' we observed in the tournament results. We hypothesise that the bots
+are maybe not good all-over players, and are powerful/weak in various game
+state subspaces. It would be interesting to compare the agents to a perfect
+knowledge agent, to investigate this with more rigour.
+
+\end{document}
